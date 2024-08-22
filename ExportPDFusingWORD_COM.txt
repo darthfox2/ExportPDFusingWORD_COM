@@ -1,0 +1,176 @@
+		using Microsoft.Office.Interop.Word;
+		using Microsoft.Office.Core;
+
+        //匯出PDF(先轉DOC再轉PDF)
+        protected void OutputPDF(string SubID, string LgeID)
+        {
+            try
+            {
+                string tempTitle = "";
+                string tempLgeTxt = "";
+
+                //取得手冊標題
+                var modelAS = _articleSubService.GetByID(SubID);
+                switch (LgeID)
+                {
+                    case "CT":
+                        {
+                            tempTitle = modelAS.SubName;
+                            tempLgeTxt = "繁中";
+
+                            break;
+                        }
+
+                    case "CS":
+                        {
+                            tempTitle = modelAS.SubName_CS;
+                            tempLgeTxt = "簡中";
+
+                            break;
+                        }
+                    case "EN":
+                        {
+                            tempTitle = modelAS.SubName_EN;
+                            tempLgeTxt = "英文";
+
+                            break;
+                        }
+                    case "JP":
+                        {
+                            tempTitle = modelAS.SubName_JP;
+                            tempLgeTxt = "日文";
+
+                            break;
+                        }
+                    case "KR":
+                        {
+                            tempTitle = modelAS.SubName_KR;
+                            tempLgeTxt = "韓文";
+
+                            break;
+                        }
+                }
+
+                #region 產生DOC檔案到資料夾
+
+                string docServerPath = "";
+
+                if (System.IO.File.Exists(Server.MapPath("\\Backend\\Word\\manual.doc")))
+                {
+                    String strEpaperMode = System.IO.File.ReadAllText(Server.MapPath("\\Backend\\Word\\manual.doc"), Encoding.UTF8);
+
+                    //取得DOC匯出內容
+                    string tempContent = GetDocContent(SubID, LgeID);
+
+                    strEpaperMode = strEpaperMode.Replace("$title$", tempTitle);
+                    strEpaperMode = strEpaperMode.Replace("$content$", tempContent);
+
+                    //先將DOC存到指定路徑(SERVER)
+                    string docServerName = string.Format("{0}.doc", tempTitle);
+                    docServerPath = string.Format("{0}\\{1}\\{2}", Server.MapPath("\\Backend\\Export"), LgeID, docServerName);
+
+                    StringBuilder sb = new StringBuilder(strEpaperMode);
+                    System.IO.File.WriteAllText(docServerPath, sb.ToString());
+                }
+
+                #endregion
+
+                //匯出PDF到本機端
+                Response.Clear();
+                this.EnableViewState = false;
+                //自訂檔名
+                Response.AddHeader("content-disposition",
+                                  string.Format("attachment;filename=manual_{0}_{1}.pdf", tempTitle, tempLgeTxt));
+
+                Response.ContentType = "application/pdf";
+                Response.Charset = "utf-8";
+                Response.ContentEncoding = System.Text.Encoding.UTF8;
+
+
+                wordApp = new Application();
+                if (wordApp != null)
+                {
+                    wordApp.Visible = false;
+
+                    //取得DOC的路徑(SERVER)
+                    var buff = GetPDF(docServerPath);
+
+                    Response.BinaryWrite(buff);
+                    Response.End();
+                }
+                else
+                {
+                    ShowMessage("COM建置失敗");
+                }
+            }
+            catch (System.Threading.ThreadAbortException)
+            {
+                //忽略
+            }
+            catch (Exception ex)
+            {
+                ShowMessage("匯出PDF失敗");
+
+                var model = new tbExceptionRecord();
+                model.CreateTime = DateTime.Now;
+                model.ExrTypeID = "EXT002";
+                model.ExrMsg = "[ERROR]OutputPDF:" + ex.ToString();
+                _exceptionRecordService.Create(model);
+            }
+        }
+
+        public byte[] GetPDF(string templateFile)
+        {
+            object filePath = templateFile;
+            //檔案先寫入系統暫存目錄
+            object outFile =
+                Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".pdf");
+            Document doc = null;
+            try
+            {
+                object readOnly = true;
+                doc = wordApp.Documents.Open(FileName: ref filePath, ReadOnly: ref readOnly);
+                doc.Activate();
+
+                //存成PDF檔案
+                object fileFormat = WdSaveFormat.wdFormatPDF;
+                doc.SaveAs2(FileName: ref outFile, FileFormat: ref fileFormat);
+                //關閉Word檔
+                object dontSave = WdSaveOptions.wdDoNotSaveChanges;
+                ((_Document)doc).Close(ref dontSave);
+            }
+            finally
+            {
+                //確保Document COM+釋放
+                if (doc != null)
+                    Marshal.FinalReleaseComObject(doc);
+                doc = null;
+            }
+            //讀取PDF檔，並將暫存檔刪除
+            byte[] buff = File.ReadAllBytes(outFile.ToString());
+            File.Delete(outFile.ToString());
+            return buff;
+        }
+
+        public void Dispose()
+        {
+            //確實關閉Word Application
+            try
+            {
+                object dontSave = WdSaveOptions.wdDoNotSaveChanges;
+                ((_Application)wordApp).Quit(ref dontSave);
+            }
+            finally
+            {
+                Marshal.FinalReleaseComObject(wordApp);
+            }
+        }
+		
+		protected string GetDocContent(string SubID, string LgeID)
+        {
+            string tempContent = "";
+			
+			//to omit
+			
+			return tempContent;
+        }
